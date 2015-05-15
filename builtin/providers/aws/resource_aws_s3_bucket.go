@@ -9,7 +9,6 @@ import (
 
 	"github.com/awslabs/aws-sdk-go/aws"
 	"github.com/awslabs/aws-sdk-go/service/s3"
-	"github.com/awslabs/aws-sdk-go/aws/awsutil"
 )
 
 func resourceAwsS3Bucket() *schema.Resource {
@@ -231,19 +230,25 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 				return fmt.Errorf("[DEBUG] S3 Bucket list Objects err: %s", err)
 			}
 
-			log.Printf("[!!!!] %s", awsutil.StringValue(resp))
+			objectsToDelete := make([]*s3.ObjectIdentifier, len(resp.Contents))
+			for i,v  := range resp.Contents {
 
-			for _,v  := range resp.Contents {
-				_, deleteErr := s3conn.DeleteObject(
-					&s3.DeleteObjectInput{
-						Bucket: aws.String(bucket),
-						Key: aws.String(*v.Key),
-					},
-				)
-				if (deleteErr != nil) {
-					log.Printf("[DEBUG] S3 Bucket force_destroy error deleting: %s", deleteErr)
+				objectsToDelete[i] = &s3.ObjectIdentifier { 
+					Key: v.Key,
 				}
 			}
+			_, deleteErr := s3conn.DeleteObjects(
+				&s3.DeleteObjectsInput {
+					Bucket: aws.String(bucket),
+					Delete: &s3.Delete{
+						Objects:objectsToDelete,
+					},
+				},
+			)
+			if (deleteErr != nil) {
+				return fmt.Errorf("[DEBUG] S3 Bucket force_destroy error deleting: %s", deleteErr)
+			} 
+			
 			// attempting to delete again
 			return resourceAwsS3BucketDelete(d,meta);
 		}
