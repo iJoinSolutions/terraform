@@ -3,11 +3,13 @@ package aws
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/hashicorp/terraform/helper/schema"
 
 	"github.com/awslabs/aws-sdk-go/aws"
 	"github.com/awslabs/aws-sdk-go/service/s3"
+	"github.com/awslabs/aws-sdk-go/aws/awsutil"
 )
 
 func resourceAwsS3Bucket() *schema.Resource {
@@ -68,6 +70,12 @@ func resourceAwsS3Bucket() *schema.Resource {
 			},
 
 			"tags": tagsSchema(),
+
+			"force_destroy": &schema.Schema{
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
 		},
 	}
 }
@@ -208,6 +216,37 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 		Bucket: aws.String(d.Id()),
 	})
 	if err != nil {
+		// bucket may have things delete them
+		forceDestroy := d.Get("force_destroy").(bool); if (forceDestroy && strings.Contains(err.Error(),"BucketNotEmpty")) {
+			log.Printf("[DEBUG] S3 Bucket attempting to forceDestroy %+v", err)
+			
+			bucket := d.Get("bucket").(string)
+			resp, listErr := s3conn.ListObjects( 
+				&s3.ListObjectsInput {
+					Bucket: aws.String(bucket),
+				},
+			)
+
+			if (listErr != nil) {
+				return fmt.Errorf("[DEBUG] S3 Bucket list Objects err: %s", err)
+			}
+
+			log.Printf("[!!!!] %s", awsutil.StringValue(resp))
+
+			for _,v  := range resp.Contents {
+				_, deleteErr := s3conn.DeleteObject(
+					&s3.DeleteObjectInput{
+						Bucket: aws.String(bucket),
+						Key: aws.String(*v.Key),
+					},
+				)
+				if (deleteErr != nil) {
+					log.Printf("[DEBUG] S3 Bucket force_destroy error deleting: %s", deleteErr)
+				}
+			}
+			// attempting to delete again
+			return resourceAwsS3BucketDelete(d,meta);
+		}
 		return err
 	}
 	return nil
