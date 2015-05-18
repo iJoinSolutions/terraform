@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -32,6 +33,12 @@ func resourceAwsS3Bucket() *schema.Resource {
 				ForceNew: true,
 			},
 
+			"policy": &schema.Schema{
+				Type:      schema.TypeString,
+				Optional:  true,
+				StateFunc: normalizeJson,
+			},
+
 			"website": &schema.Schema{
 				Type:     schema.TypeList,
 				Optional: true,
@@ -39,11 +46,20 @@ func resourceAwsS3Bucket() *schema.Resource {
 					Schema: map[string]*schema.Schema{
 						"index_document": &schema.Schema{
 							Type:     schema.TypeString,
-							Required: true,
+							Optional: true,
 						},
 
 						"error_document": &schema.Schema{
 							Type:     schema.TypeString,
+							Optional: true,
+						},
+
+						"redirect_all_requests_to": &schema.Schema{
+							Type: schema.TypeString,
+							ConflictsWith: []string{
+								"website.0.index_document",
+								"website.0.error_document",
+							},
 							Optional: true,
 						},
 					},
@@ -119,8 +135,16 @@ func resourceAwsS3BucketUpdate(d *schema.ResourceData, meta interface{}) error {
 		return err
 	}
 
-	if err := resourceAwsS3BucketWebsiteUpdate(s3conn, d); err != nil {
-		return err
+	if d.HasChange("policy") {
+		if err := resourceAwsS3BucketPolicyUpdate(s3conn, d); err != nil {
+			return err
+		}
+	}
+
+	if d.HasChange("website") {
+		if err := resourceAwsS3BucketWebsiteUpdate(s3conn, d); err != nil {
+			return err
+		}
 	}
 
 	return resourceAwsS3BucketRead(d, meta)
@@ -142,6 +166,25 @@ func resourceAwsS3BucketRead(d *schema.ResourceData, meta interface{}) error {
 		}
 	}
 
+	// Read the policy
+	pol, err := s3conn.GetBucketPolicy(&s3.GetBucketPolicyInput{
+		Bucket: aws.String(d.Id()),
+	})
+	log.Printf("[DEBUG] S3 bucket: %s, read policy: %v", d.Id(), pol)
+	if err != nil {
+		if err := d.Set("policy", ""); err != nil {
+			return err
+		}
+	} else {
+		if v := pol.Policy; v == nil {
+			if err := d.Set("policy", ""); err != nil {
+				return err
+			}
+		} else if err := d.Set("policy", normalizeJson(*v)); err != nil {
+			return err
+		}
+	}
+
 	// Read the website configuration
 	ws, err := s3conn.GetBucketWebsite(&s3.GetBucketWebsiteInput{
 		Bucket: aws.String(d.Id()),
@@ -150,10 +193,16 @@ func resourceAwsS3BucketRead(d *schema.ResourceData, meta interface{}) error {
 	if err == nil {
 		w := make(map[string]interface{})
 
-		w["index_document"] = *ws.IndexDocument.Suffix
+		if v := ws.IndexDocument; v != nil {
+			w["index_document"] = *v.Suffix
+		}
 
 		if v := ws.ErrorDocument; v != nil {
 			w["error_document"] = *v.Key
+		}
+
+		if v := ws.RedirectAllRequestsTo; v != nil {
+			w["redirect_all_requests_to"] = *v.HostName
 		}
 
 		websites = append(websites, w)
@@ -257,11 +306,36 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
-func resourceAwsS3BucketWebsiteUpdate(s3conn *s3.S3, d *schema.ResourceData) error {
-	if !d.HasChange("website") {
-		return nil
+func resourceAwsS3BucketPolicyUpdate(s3conn *s3.S3, d *schema.ResourceData) error {
+	bucket := d.Get("bucket").(string)
+	policy := d.Get("policy").(string)
+
+	if policy != "" {
+		log.Printf("[DEBUG] S3 bucket: %s, put policy: %s", bucket, policy)
+
+		_, err := s3conn.PutBucketPolicy(&s3.PutBucketPolicyInput{
+			Bucket: aws.String(bucket),
+			Policy: aws.String(policy),
+		})
+
+		if err != nil {
+			return fmt.Errorf("Error putting S3 policy: %s", err)
+		}
+	} else {
+		log.Printf("[DEBUG] S3 bucket: %s, delete policy: %s", bucket, policy)
+		_, err := s3conn.DeleteBucketPolicy(&s3.DeleteBucketPolicyInput{
+			Bucket: aws.String(bucket),
+		})
+
+		if err != nil {
+			return fmt.Errorf("Error deleting S3 policy: %s", err)
+		}
 	}
 
+	return nil
+}
+
+func resourceAwsS3BucketWebsiteUpdate(s3conn *s3.S3, d *schema.ResourceData) error {
 	ws := d.Get("website").([]interface{})
 
 	if len(ws) == 1 {
@@ -279,13 +353,24 @@ func resourceAwsS3BucketWebsitePut(s3conn *s3.S3, d *schema.ResourceData, websit
 
 	indexDocument := website["index_document"].(string)
 	errorDocument := website["error_document"].(string)
+	redirectAllRequestsTo := website["redirect_all_requests_to"].(string)
+
+	if indexDocument == "" && redirectAllRequestsTo == "" {
+		return fmt.Errorf("Must specify either index_document or redirect_all_requests_to.")
+	}
 
 	websiteConfiguration := &s3.WebsiteConfiguration{}
 
-	websiteConfiguration.IndexDocument = &s3.IndexDocument{Suffix: aws.String(indexDocument)}
+	if indexDocument != "" {
+		websiteConfiguration.IndexDocument = &s3.IndexDocument{Suffix: aws.String(indexDocument)}
+	}
 
 	if errorDocument != "" {
 		websiteConfiguration.ErrorDocument = &s3.ErrorDocument{Key: aws.String(errorDocument)}
+	}
+
+	if redirectAllRequestsTo != "" {
+		websiteConfiguration.RedirectAllRequestsTo = &s3.RedirectAllRequestsTo{HostName: aws.String(redirectAllRequestsTo)}
 	}
 
 	putInput := &s3.PutBucketWebsiteInput{
@@ -346,6 +431,19 @@ func websiteEndpoint(s3conn *s3.S3, d *schema.ResourceData) (string, error) {
 func WebsiteEndpointUrl(bucket string, region string) string {
 	region = normalizeRegion(region)
 	return fmt.Sprintf("%s.s3-website-%s.amazonaws.com", bucket, region)
+}
+
+func normalizeJson(jsonString interface{}) string {
+	if jsonString == nil {
+		return ""
+	}
+	j := make(map[string]interface{})
+	err := json.Unmarshal([]byte(jsonString.(string)), &j)
+	if err != nil {
+		return fmt.Sprintf("Error parsing JSON: %s", err)
+	}
+	b, _ := json.Marshal(j)
+	return string(b[:])
 }
 
 func normalizeRegion(region string) string {

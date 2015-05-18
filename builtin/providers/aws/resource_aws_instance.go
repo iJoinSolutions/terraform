@@ -140,6 +140,11 @@ func resourceAwsInstance() *schema.Resource {
 				Optional: true,
 			},
 
+			"disable_api_termination": &schema.Schema{
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
+
 			"iam_instance_profile": &schema.Schema{
 				Type:     schema.TypeString,
 				ForceNew: true,
@@ -336,14 +341,15 @@ func resourceAwsInstanceCreate(d *schema.ResourceData, meta interface{}) error {
 
 	// Build the creation struct
 	runOpts := &ec2.RunInstancesInput{
-		ImageID:            aws.String(d.Get("ami").(string)),
-		Placement:          placement,
-		InstanceType:       aws.String(d.Get("instance_type").(string)),
-		MaxCount:           aws.Long(int64(1)),
-		MinCount:           aws.Long(int64(1)),
-		UserData:           aws.String(userData),
-		EBSOptimized:       aws.Boolean(d.Get("ebs_optimized").(bool)),
-		IAMInstanceProfile: iam,
+		ImageID:               aws.String(d.Get("ami").(string)),
+		Placement:             placement,
+		InstanceType:          aws.String(d.Get("instance_type").(string)),
+		MaxCount:              aws.Long(int64(1)),
+		MinCount:              aws.Long(int64(1)),
+		UserData:              aws.String(userData),
+		EBSOptimized:          aws.Boolean(d.Get("ebs_optimized").(bool)),
+		DisableAPITermination: aws.Boolean(d.Get("disable_api_termination").(bool)),
+		IAMInstanceProfile:    iam,
 	}
 
 	associatePublicIPAddress := false
@@ -487,6 +493,12 @@ func resourceAwsInstanceCreate(d *schema.ResourceData, meta interface{}) error {
 			}
 
 			if dn, err := fetchRootDeviceName(d.Get("ami").(string), conn); err == nil {
+				if dn == nil {
+					return fmt.Errorf(
+						"Expected 1 AMI for ID: %s, got none",
+						d.Get("ami").(string))
+				}
+
 				blockDevices = append(blockDevices, &ec2.BlockDeviceMapping{
 					DeviceName: dn,
 					EBS:        ebs,
@@ -694,7 +706,18 @@ func resourceAwsInstanceUpdate(d *schema.ResourceData, meta interface{}) error {
 		if err != nil {
 			return err
 		}
+	}
 
+	if d.HasChange("disable_api_termination") {
+		_, err := conn.ModifyInstanceAttribute(&ec2.ModifyInstanceAttributeInput{
+			InstanceID: aws.String(d.Id()),
+			DisableAPITermination: &ec2.AttributeBooleanValue{
+				Value: aws.Boolean(d.Get("disable_api_termination").(bool)),
+			},
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	// TODO(mitchellh): wait for the attributes we modified to
@@ -874,6 +897,8 @@ func fetchRootDeviceName(ami string, conn *ec2.EC2) (*string, error) {
 	if res, err := conn.DescribeImages(req); err == nil {
 		if len(res.Images) == 1 {
 			return res.Images[0].RootDeviceName, nil
+		} else if len(res.Images) == 0 {
+			return nil, nil
 		} else {
 			return nil, fmt.Errorf("Expected 1 AMI for ID: %s, got: %#v", ami, res.Images)
 		}
