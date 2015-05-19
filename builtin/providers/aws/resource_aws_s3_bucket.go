@@ -298,7 +298,7 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 				return fmt.Errorf("[DEBUG] S3 Bucket force_destroy error deleting: %s", err)
 			} 
 			
-			// attempting to delete again
+			// this line recurses until all objects are deleted or an error is returned
 			return resourceAwsS3BucketDelete(d,meta);
 		}
 		return err
