@@ -269,13 +269,13 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 			log.Printf("[DEBUG] S3 Bucket attempting to forceDestroy %+v", err)
 			
 			bucket := d.Get("bucket").(string)
-			resp, listErr := s3conn.ListObjects( 
+			resp, err := s3conn.ListObjects( 
 				&s3.ListObjectsInput {
 					Bucket: aws.String(bucket),
 				},
 			)
 
-			if (listErr != nil) {
+			if err != nil {
 				return fmt.Errorf("[DEBUG] S3 Bucket list Objects err: %s", err)
 			}
 
@@ -286,7 +286,7 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 					Key: v.Key,
 				}
 			}
-			_, deleteErr := s3conn.DeleteObjects(
+			_, err = s3conn.DeleteObjects(
 				&s3.DeleteObjectsInput {
 					Bucket: aws.String(bucket),
 					Delete: &s3.Delete{
@@ -294,8 +294,8 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 					},
 				},
 			)
-			if (deleteErr != nil) {
-				return fmt.Errorf("[DEBUG] S3 Bucket force_destroy error deleting: %s", deleteErr)
+			if err != nil {
+				return fmt.Errorf("[DEBUG] S3 Bucket force_destroy error deleting: %s", err)
 			} 
 			
 			// attempting to delete again
