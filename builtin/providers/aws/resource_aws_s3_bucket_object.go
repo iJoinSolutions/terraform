@@ -52,6 +52,7 @@ func resourceAwsS3BucketObjectPut(d *schema.ResourceData, meta interface{}) erro
 	file, err := os.Open(source)
 
 	if err != nil {
+		d.SetId("")
 		return fmt.Errorf("Error opening S3 bucket object source(%s): %s", source, err)
 	}
 
@@ -63,6 +64,7 @@ func resourceAwsS3BucketObjectPut(d *schema.ResourceData, meta interface{}) erro
 		})
 
 	if err != nil {
+		d.SetId("")
 		return fmt.Errorf("Error putting object in S3 bucket (%s): %s", bucket, err)
 	}
 
@@ -72,9 +74,43 @@ func resourceAwsS3BucketObjectPut(d *schema.ResourceData, meta interface{}) erro
 }
 
 func resourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) error {
+	s3conn := meta.(*AWSClient).s3conn
+
+	bucket := d.Get("bucket").(string)
+	key    := d.Get("key").(string)
+
+	resp, err := s3conn.GetObject(
+		&s3.GetObjectInput{
+			Bucket:  aws.String(bucket),
+			Key:     aws.String(key),
+			// we don't really want to download entire object just see if it is there.
+			Range:   aws.String("bytes=0-0"),
+			IfMatch: aws.String(d.Id()),
+		})
+
+	if err != nil {
+		// if there is an error reading the object we assume it's not there.
+		d.SetId("")
+		log.Printf("Error Reading Object (%s): %s")
+	}
+
+	log.Printf(awsutil.StringValue(resp))
 	return nil
 }
 
 func resourceAwsS3BucketObjectDelete(d *schema.ResourceData, meta interface{}) error {
+	s3conn := meta.(*AWSClient).s3conn
+
+	bucket := d.Get("bucket").(string)
+	key    := d.Get("key").(string)
+
+	_, err := s3conn.DeleteObject(
+		&s3.DeleteObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(key),
+		})
+	if err != nil {
+		return fmt.Errorf("Error deleting S3 bucket object: %s", err)
+	}
 	return nil
 }
