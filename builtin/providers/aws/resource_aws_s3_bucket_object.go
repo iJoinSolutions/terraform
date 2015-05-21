@@ -14,9 +14,9 @@ import (
 
 func resourceAwsS3BucketObject() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceAwsS3BucketObjectCreate,
+		Create: resourceAwsS3BucketObjectPut,
 		Read: resourceAwsS3BucketObjectRead,
-		Update: resourceAwsS3BucketObjectUpdate,
+		Update: resourceAwsS3BucketObjectPut,
 		Delete: resourceAwsS3BucketObjectDelete,
 
 		Schema: map[string]*schema.Schema{
@@ -42,7 +42,7 @@ func resourceAwsS3BucketObject() *schema.Resource {
 	}
 }
 
-func resourceAwsS3BucketObjectCreate(d *schema.ResourceData, meta interface{}) error {
+func resourceAwsS3BucketObjectPut(d *schema.ResourceData, meta interface{}) error {
 	s3conn := meta.(*AWSClient).s3conn
 
 	bucket := d.Get("bucket").(string)
@@ -72,10 +72,6 @@ func resourceAwsS3BucketObjectCreate(d *schema.ResourceData, meta interface{}) e
 }
 
 func resourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) error {
-	return nil
-}
-
-func resourceAwsS3BucketObjectUpdate(d *schema.ResourceData, meta interface{}) error {
 	return nil
 }
 
