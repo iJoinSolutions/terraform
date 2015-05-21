@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 
 	"github.com/awslabs/aws-sdk-go/aws"
+	"github.com/awslabs/aws-sdk-go/aws/awserr"
 	"github.com/awslabs/aws-sdk-go/service/s3"
 )
 
@@ -152,11 +153,12 @@ func resourceAwsS3BucketUpdate(d *schema.ResourceData, meta interface{}) error {
 func resourceAwsS3BucketRead(d *schema.ResourceData, meta interface{}) error {
 	s3conn := meta.(*AWSClient).s3conn
 
-	_, err := s3conn.HeadBucket(&s3.HeadBucketInput{
+	var err error
+	_, err = s3conn.HeadBucket(&s3.HeadBucketInput{
 		Bucket: aws.String(d.Id()),
 	})
 	if err != nil {
-		if awsError, ok := err.(aws.APIError); ok && awsError.StatusCode == 404 {
+		if awsError, ok := err.(awserr.RequestFailure); ok && awsError.StatusCode() == 404 {
 			d.SetId("")
 		} else {
 			// some of the AWS SDK's errors can be empty strings, so let's add
@@ -263,8 +265,8 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 		Bucket: aws.String(d.Id()),
 	})
 	if err != nil {
-		ec2err, ok := err.(aws.APIError)
-		if ok && ec2err.Code == "BucketNotEmpty" {
+		ec2err, ok := err.(awserr.Error)
+		if ok && ec2err.Code() == "BucketNotEmpty" {
 			if d.Get("force_destroy").(bool) {
 				// bucket may have things delete them
 				log.Printf("[DEBUG] S3 Bucket attempting to forceDestroy %+v", err)
@@ -282,7 +284,6 @@ func resourceAwsS3BucketDelete(d *schema.ResourceData, meta interface{}) error {
 
 				objectsToDelete := make([]*s3.ObjectIdentifier, len(resp.Contents))
 				for i, v := range resp.Contents {
-
 					objectsToDelete[i] = &s3.ObjectIdentifier{
 						Key: v.Key,
 					}
