@@ -91,7 +91,7 @@ func resourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) err
 	if err != nil {
 		// if there is an error reading the object we assume it's not there.
 		d.SetId("")
-		log.Printf("Error Reading Object (%s): %s")
+		log.Printf("Error Reading Object (%s): %s", key, err)
 	}
 
 	log.Printf(awsutil.StringValue(resp))
