@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"log"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
 
 	"github.com/awslabs/aws-sdk-go/aws"
 	"github.com/awslabs/aws-sdk-go/service/s3"
 )
+
 var tf,err = ioutil.TempFile("", "tf")
-var _ = log.Printf
+
 func TestAccAWSS3BucketObject_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { 
