@@ -68,7 +68,6 @@ func resourceAwsS3BucketObjectPut(d *schema.ResourceData, meta interface{}) erro
 		return fmt.Errorf("Error putting object in S3 bucket (%s): %s", bucket, err)
 	}
 
-	log.Printf(awsutil.StringValue(resp))
 	d.SetId(*resp.ETag)
 	return nil
 }

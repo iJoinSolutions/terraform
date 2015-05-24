@@ -19,7 +19,7 @@ func TestAccAWSS3BucketObject_basic(t *testing.T) {
 		PreCheck:     func() { 
 			if err != nil {
 				panic(err)
-			} 
+			}
 			testAccPreCheck(t)
 		},
 		Providers: testAccProviders,
@@ -27,22 +27,29 @@ func TestAccAWSS3BucketObject_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			resource.TestStep{
 				Config: testAccAWSS3BucketObjectConfig,
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSS3BucketObjectExists("aws_s3_bucket_object.object"),
-				),
+				Check: testAccCheckAWSS3BucketObjectExists("aws_s3_bucket_object.object"),
 			},
 		},
 	})
 }
 
 func testAccCheckAWSS3BucketObjectDestroy(s *terraform.State) error {
-	//s3conn := testAccProvider.Meta().(*AWSClient).s3conn
+	s3conn := testAccProvider.Meta().(*AWSClient).s3conn
 
 	for _, rs := range s.RootModule().Resources {
 		if rs.Type != "aws_s3_bucket_object" {
 			continue
 		}
-		
+	
+		_, err := s3conn.GetObject(
+			&s3.GetObjectInput{
+				Bucket:  aws.String(rs.Primary.Attributes["bucket"]),
+				Key:     aws.String(rs.Primary.Attributes["key"]),
+				IfMatch: aws.String(rs.Primary.ID),
+		})
+		if err == nil {
+			return fmt.Errorf("AWS S3 Object still exists: %s", rs.Primary.ID)
+		}
 	}
 	return nil
 }
@@ -77,11 +84,12 @@ func testAccCheckAWSS3BucketObjectExists(n string) resource.TestCheckFunc {
 
 var randomBucket = randInt;
 var testAccAWSS3BucketObjectConfig = fmt.Sprintf(`
-resource "aws_s3_bucket" "bucket" {
+resource "aws_s3_bucket" "object_bucket" {
 	bucket = "tf-object-test-bucket-%d"
+	region = "us-east-1"
 }
 resource "aws_s3_bucket_object" "object" {
-	depends_on = "aws_s3_bucket.bucket"
+	depends_on = "aws_s3_bucket.object_bucket"
 	bucket = "tf-object-test-bucket-%d"
 	key = "test-key"
 	source = "%s"
