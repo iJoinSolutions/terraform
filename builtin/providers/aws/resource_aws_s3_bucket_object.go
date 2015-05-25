@@ -82,7 +82,7 @@ func resourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) err
 			Bucket: aws.String(bucket),
 			Key:    aws.String(key),
 			// we don't really want to download entire object just see if it is there.
-			//Range:   aws.String("bytes=0-0"),
+			Range:   aws.String("bytes=0-0"),
 			IfMatch: aws.String(d.Id()),
 		})
 

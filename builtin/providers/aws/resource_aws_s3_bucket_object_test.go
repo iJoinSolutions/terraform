@@ -15,6 +15,8 @@ import (
 var tf, err = ioutil.TempFile("", "tf")
 
 func TestAccAWSS3BucketObject_basic(t *testing.T) {
+	// first write some data to the tempfile just so it's not 0 bytes.
+	ioutil.WriteFile(tf.Name(), []byte("{anything will do }"), 0644)
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			if err != nil {
