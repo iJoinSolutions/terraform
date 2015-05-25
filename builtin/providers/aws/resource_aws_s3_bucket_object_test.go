@@ -86,7 +86,6 @@ var randomBucket = randInt
 var testAccAWSS3BucketObjectConfig = fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
 	bucket = "tf-object-test-bucket-%d"
-	region = "us-east-1"
 }
 resource "aws_s3_bucket_object" "object" {
 	depends_on = "aws_s3_bucket.object_bucket"
