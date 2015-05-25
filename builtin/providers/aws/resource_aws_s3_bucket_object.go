@@ -1,21 +1,21 @@
 package aws
 
 import (
-	"os"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/hashicorp/terraform/helper/schema"
 
 	"github.com/awslabs/aws-sdk-go/aws"
-	"github.com/awslabs/aws-sdk-go/service/s3"
 	"github.com/awslabs/aws-sdk-go/aws/awsutil"
+	"github.com/awslabs/aws-sdk-go/service/s3"
 )
 
 func resourceAwsS3BucketObject() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceAwsS3BucketObjectPut,
-		Read: resourceAwsS3BucketObjectRead,
+		Read:   resourceAwsS3BucketObjectRead,
 		Update: resourceAwsS3BucketObjectPut,
 		Delete: resourceAwsS3BucketObjectDelete,
 
@@ -37,7 +37,6 @@ func resourceAwsS3BucketObject() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 			},
-
 		},
 	}
 }
@@ -46,7 +45,7 @@ func resourceAwsS3BucketObjectPut(d *schema.ResourceData, meta interface{}) erro
 	s3conn := meta.(*AWSClient).s3conn
 
 	bucket := d.Get("bucket").(string)
-	key    := d.Get("key").(string)
+	key := d.Get("key").(string)
 	source := d.Get("source").(string)
 
 	file, err := os.Open(source)
@@ -76,12 +75,12 @@ func resourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) err
 	s3conn := meta.(*AWSClient).s3conn
 
 	bucket := d.Get("bucket").(string)
-	key    := d.Get("key").(string)
+	key := d.Get("key").(string)
 
 	resp, err := s3conn.GetObject(
 		&s3.GetObjectInput{
-			Bucket:  aws.String(bucket),
-			Key:     aws.String(key),
+			Bucket: aws.String(bucket),
+			Key:    aws.String(key),
 			// we don't really want to download entire object just see if it is there.
 			Range:   aws.String("bytes=0-0"),
 			IfMatch: aws.String(d.Id()),
@@ -101,7 +100,7 @@ func resourceAwsS3BucketObjectDelete(d *schema.ResourceData, meta interface{}) e
 	s3conn := meta.(*AWSClient).s3conn
 
 	bucket := d.Get("bucket").(string)
-	key    := d.Get("key").(string)
+	key := d.Get("key").(string)
 
 	_, err := s3conn.DeleteObject(
 		&s3.DeleteObjectInput{

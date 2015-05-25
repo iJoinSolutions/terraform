@@ -1,33 +1,33 @@
 package aws
 
 import (
-	"testing"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"github.com/hashicorp/terraform/helper/resource"
 	"github.com/hashicorp/terraform/terraform"
+	"io/ioutil"
+	"os"
+	"testing"
 
 	"github.com/awslabs/aws-sdk-go/aws"
 	"github.com/awslabs/aws-sdk-go/service/s3"
 )
 
-var tf,err = ioutil.TempFile("", "tf")
+var tf, err = ioutil.TempFile("", "tf")
 
 func TestAccAWSS3BucketObject_basic(t *testing.T) {
 	resource.Test(t, resource.TestCase{
-		PreCheck:     func() { 
+		PreCheck: func() {
 			if err != nil {
 				panic(err)
 			}
 			testAccPreCheck(t)
 		},
-		Providers: testAccProviders,
+		Providers:    testAccProviders,
 		CheckDestroy: testAccCheckAWSS3BucketObjectDestroy,
 		Steps: []resource.TestStep{
 			resource.TestStep{
 				Config: testAccAWSS3BucketObjectConfig,
-				Check: testAccCheckAWSS3BucketObjectExists("aws_s3_bucket_object.object"),
+				Check:  testAccCheckAWSS3BucketObjectExists("aws_s3_bucket_object.object"),
 			},
 		},
 	})
@@ -40,13 +40,13 @@ func testAccCheckAWSS3BucketObjectDestroy(s *terraform.State) error {
 		if rs.Type != "aws_s3_bucket_object" {
 			continue
 		}
-	
+
 		_, err := s3conn.GetObject(
 			&s3.GetObjectInput{
 				Bucket:  aws.String(rs.Primary.Attributes["bucket"]),
 				Key:     aws.String(rs.Primary.Attributes["key"]),
 				IfMatch: aws.String(rs.Primary.ID),
-		})
+			})
 		if err == nil {
 			return fmt.Errorf("AWS S3 Object still exists: %s", rs.Primary.ID)
 		}
@@ -57,7 +57,7 @@ func testAccCheckAWSS3BucketObjectDestroy(s *terraform.State) error {
 func testAccCheckAWSS3BucketObjectExists(n string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 
-		defer os.Remove(tf.Name());
+		defer os.Remove(tf.Name())
 
 		rs, ok := s.RootModule().Resources[n]
 		if !ok {
@@ -74,7 +74,7 @@ func testAccCheckAWSS3BucketObjectExists(n string) resource.TestCheckFunc {
 				Bucket:  aws.String(rs.Primary.Attributes["bucket"]),
 				Key:     aws.String(rs.Primary.Attributes["key"]),
 				IfMatch: aws.String(rs.Primary.ID),
-		})
+			})
 		if err != nil {
 			return fmt.Errorf("S3Bucket Object error: %s", err)
 		}
@@ -82,7 +82,7 @@ func testAccCheckAWSS3BucketObjectExists(n string) resource.TestCheckFunc {
 	}
 }
 
-var randomBucket = randInt;
+var randomBucket = randInt
 var testAccAWSS3BucketObjectConfig = fmt.Sprintf(`
 resource "aws_s3_bucket" "object_bucket" {
 	bucket = "tf-object-test-bucket-%d"
@@ -95,4 +95,3 @@ resource "aws_s3_bucket_object" "object" {
 	source = "%s"
 }
 `, randomBucket, randomBucket, tf.Name())
-
