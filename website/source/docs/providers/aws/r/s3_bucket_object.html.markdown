@@ -33,4 +33,4 @@ The following arguments are supported:
 
 The following attributes are exported
 
-* `id` - the id of the resouce corresponds to the ETag of the bucket object on aws.
+* `id` - the id of the resource corresponds to the ETag of the bucket object on aws.
