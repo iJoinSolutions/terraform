@@ -43,8 +43,8 @@ func testAccCheckAWSS3BucketObjectDestroy(s *terraform.State) error {
 			continue
 		}
 
-		_, err := s3conn.GetObject(
-			&s3.GetObjectInput{
+		_, err := s3conn.HeadObject(
+			&s3.HeadObjectInput{
 				Bucket:  aws.String(rs.Primary.Attributes["bucket"]),
 				Key:     aws.String(rs.Primary.Attributes["key"]),
 				IfMatch: aws.String(rs.Primary.ID),

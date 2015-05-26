@@ -77,12 +77,10 @@ func resourceAwsS3BucketObjectRead(d *schema.ResourceData, meta interface{}) err
 	bucket := d.Get("bucket").(string)
 	key := d.Get("key").(string)
 
-	resp, err := s3conn.GetObject(
-		&s3.GetObjectInput{
+	resp, err := s3conn.HeadObject(
+		&s3.HeadObjectInput{
 			Bucket: aws.String(bucket),
 			Key:    aws.String(key),
-			// we don't really want to download entire object just see if it is there.
-			Range:   aws.String("bytes=0-0"),
 			IfMatch: aws.String(d.Id()),
 		})
 
