@@ -3,10 +3,10 @@ package google
 import (
 	"bytes"
 	"fmt"
-
-	"google.golang.org/api/compute/v1"
+	"log"
 
 	"github.com/hashicorp/terraform/helper/resource"
+	"google.golang.org/api/compute/v1"
 )
 
 // OperationWaitType is an enum specifying what type of operation
@@ -25,8 +25,8 @@ type OperationWaiter struct {
 	Op      *compute.Operation
 	Project string
 	Region  string
-	Zone    string
 	Type    OperationWaitType
+	Zone    string
 }
 
 func (w *OperationWaiter) RefreshFunc() resource.StateRefreshFunc {
@@ -52,6 +52,8 @@ func (w *OperationWaiter) RefreshFunc() resource.StateRefreshFunc {
 		if err != nil {
 			return nil, "", err
 		}
+
+		log.Printf("[DEBUG] Got %q when asking for operation %q", op.Status, w.Op.Name)
 
 		return op, op.Status, nil
 	}

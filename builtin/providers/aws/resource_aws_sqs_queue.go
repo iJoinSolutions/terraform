@@ -7,8 +7,8 @@ import (
 
 	"github.com/hashicorp/terraform/helper/schema"
 
-	"github.com/awslabs/aws-sdk-go/aws"
-	"github.com/awslabs/aws-sdk-go/service/sqs"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/sqs"
 )
 
 var AttributeMap = map[string]string{
@@ -19,6 +19,7 @@ var AttributeMap = map[string]string{
 	"visibility_timeout_seconds": "VisibilityTimeout",
 	"policy":                     "Policy",
 	"redrive_policy":             "RedrivePolicy",
+	"arn":                        "QueueArn",
 }
 
 // A number of these are marked as computed because if you don't
@@ -70,6 +71,10 @@ func resourceAwsSqsQueue() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			"arn": &schema.Schema{
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 		},
 	}
 }
@@ -103,7 +108,7 @@ func resourceAwsSqsQueueCreate(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	if len(attributes) > 0 {
-		req.Attributes = &attributes
+		req.Attributes = attributes
 	}
 
 	output, err := sqsconn.CreateQueue(req)
@@ -111,7 +116,7 @@ func resourceAwsSqsQueueCreate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("Error creating SQS queue: %s", err)
 	}
 
-	d.SetId(*output.QueueURL)
+	d.SetId(*output.QueueUrl)
 
 	return resourceAwsSqsQueueUpdate(d, meta)
 }
@@ -138,8 +143,8 @@ func resourceAwsSqsQueueUpdate(d *schema.ResourceData, meta interface{}) error {
 
 	if len(attributes) > 0 {
 		req := &sqs.SetQueueAttributesInput{
-			QueueURL:   aws.String(d.Id()),
-			Attributes: &attributes,
+			QueueUrl:   aws.String(d.Id()),
+			Attributes: attributes,
 		}
 		sqsconn.SetQueueAttributes(req)
 	}
@@ -151,15 +156,16 @@ func resourceAwsSqsQueueRead(d *schema.ResourceData, meta interface{}) error {
 	sqsconn := meta.(*AWSClient).sqsconn
 
 	attributeOutput, err := sqsconn.GetQueueAttributes(&sqs.GetQueueAttributesInput{
-		QueueURL:       aws.String(d.Id()),
+		QueueUrl:       aws.String(d.Id()),
 		AttributeNames: []*string{aws.String("All")},
 	})
+
 	if err != nil {
 		return err
 	}
 
-	if attributeOutput.Attributes != nil && len(*attributeOutput.Attributes) > 0 {
-		attrmap := *attributeOutput.Attributes
+	if attributeOutput.Attributes != nil && len(attributeOutput.Attributes) > 0 {
+		attrmap := attributeOutput.Attributes
 		resource := *resourceAwsSqsQueue()
 		// iKey = internal struct key, oKey = AWS Attribute Map key
 		for iKey, oKey := range AttributeMap {
@@ -185,7 +191,7 @@ func resourceAwsSqsQueueDelete(d *schema.ResourceData, meta interface{}) error {
 
 	log.Printf("[DEBUG] SQS Delete Queue: %s", d.Id())
 	_, err := sqsconn.DeleteQueue(&sqs.DeleteQueueInput{
-		QueueURL: aws.String(d.Id()),
+		QueueUrl: aws.String(d.Id()),
 	})
 	if err != nil {
 		return err
