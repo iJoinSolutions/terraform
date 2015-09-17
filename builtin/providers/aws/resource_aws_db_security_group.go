@@ -77,12 +77,6 @@ func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) 
 	conn := meta.(*AWSClient).rdsconn
 	var err error
 	var errs []error
-	/*
-		opts := rds.CreateDBSecurityGroupInput{
-			DBSecurityGroupName:	aws.String(d.Get("name").(string)),
-			DBSecurityGroupDescription: aws.String(d.Get("description").(string)),
-		}
-	*/
 
 	sg, err := resourceAwsDbSecurityGroupRetrieve(d, meta)
 	if err != nil {
@@ -162,6 +156,10 @@ func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) 
 		if err != nil {
 			errs = append(errs, err)
 		}
+	}
+
+	if len(errs) > 0 {
+		return &multierror.Error{Errors: errs}
 	}
 
 	return nil
@@ -371,7 +369,7 @@ func resourceAwsDbSecurityGroupRevokeRule(ingress interface{}, dbSecurityGroupNa
 	_, err := conn.RevokeDBSecurityGroupIngress(&opts)
 
 	if err != nil {
-		return fmt.Errorf("Error authorizing security group ingress: %s", err)
+		return fmt.Errorf("Error revoking security group ingress: %s", err)
 	}
 
 	return nil
