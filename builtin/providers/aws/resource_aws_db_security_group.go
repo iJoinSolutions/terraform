@@ -73,24 +73,23 @@ func resourceAwsDbSecurityGroup() *schema.Resource {
 
 func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) error {
 
-	log.Printf("**************************** Update **********************");
+	log.Printf("**************************** Update **********************")
 	conn := meta.(*AWSClient).rdsconn
 	var err error
 	var errs []error
-/*
-	opts := rds.CreateDBSecurityGroupInput{
-		DBSecurityGroupName:	aws.String(d.Get("name").(string)),
-		DBSecurityGroupDescription: aws.String(d.Get("description").(string)),
-	}
-*/
+	/*
+		opts := rds.CreateDBSecurityGroupInput{
+			DBSecurityGroupName:	aws.String(d.Get("name").(string)),
+			DBSecurityGroupDescription: aws.String(d.Get("description").(string)),
+		}
+	*/
 
 	sg, err := resourceAwsDbSecurityGroupRetrieve(d, meta)
 	if err != nil {
 		return err
 	}
 
-	log.Printf("%+v", sg);
-
+	log.Printf("%+v", sg)
 
 	// AWS Go SDK doesn't have "update" (for groups) and you can not "delete" a group that is being used.
 	// however if the ingresses change, that could be updated.
@@ -98,9 +97,9 @@ func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) 
 	// so at this point the right solution would be to assume that since this is an update the name and description will not change. (can't change anyways).
 	// And get a List of the current ingresses from AWSClient rdsconn
 	// once we have a map of that list we can go through the state file list (terraform stores them like this:
-	
+
 	// Create an empty schema.Set to hold all ingress rules that are currently on the resource
-	
+
 	currentRules := &schema.Set{
 		F: resourceAwsDbSecurityGroupIngressHash,
 	}
@@ -110,7 +109,7 @@ func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) 
 		currentRules.Add(rule)
 	}
 
-	log.Printf("********************* Parse Current Rules *******************************");
+	log.Printf("********************* Parse Current Rules *******************************")
 	for _, g := range sg.EC2SecurityGroups {
 		rule := map[string]interface{}{
 			"security_group_name":     *g.EC2SecurityGroupName,
@@ -120,11 +119,11 @@ func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) 
 		currentRules.Add(rule)
 	}
 
-	log.Printf("%+v", currentRules);
-	
-	log.Printf("********************* Authorize New Rules *******************************");
+	log.Printf("%+v", currentRules)
 
-	// if there needs to be a change we Revoke ingress and add a new one with the new rules 
+	log.Printf("********************* Authorize New Rules *******************************")
+
+	// if there needs to be a change we Revoke ingress and add a new one with the new rules
 	// at this point we have "updated" and I think that is about as good as it will get.
 	ingresses := d.Get("ingress").(*schema.Set)
 	for _, ing := range ingresses.List() {
@@ -153,10 +152,10 @@ func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) 
 	if err != nil {
 		return err
 	}
-	
-	log.Printf("********************* Revoke Current Rules *******************************");
 
-//	ingressesToRevoke := currentRules.Get("ingress").(*schema.Set)
+	log.Printf("********************* Revoke Current Rules *******************************")
+
+	//	ingressesToRevoke := currentRules.Get("ingress").(*schema.Set)
 
 	for _, thisIng := range currentRules.List() {
 		err := resourceAwsDbSecurityGroupRevokeRule(thisIng, *sg.DBSecurityGroupName, conn)
@@ -165,7 +164,7 @@ func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) 
 		}
 	}
 
-	return nil;
+	return nil
 }
 
 func resourceAwsDbSecurityGroupCreate(d *schema.ResourceData, meta interface{}) error {
@@ -231,8 +230,8 @@ func resourceAwsDbSecurityGroupRead(d *schema.ResourceData, meta interface{}) er
 		return err
 	}
 
-	log.Printf("READ ******************************************");
-	log.Printf("%+v", sg);
+	log.Printf("READ ******************************************")
+	log.Printf("%+v", sg)
 	d.Set("name", *sg.DBSecurityGroupName)
 	d.Set("description", *sg.DBSecurityGroupDescription)
 
@@ -246,7 +245,7 @@ func resourceAwsDbSecurityGroupRead(d *schema.ResourceData, meta interface{}) er
 		rules.Add(rule)
 	}
 
-	log.Printf("******************************************");
+	log.Printf("******************************************")
 	for _, g := range sg.EC2SecurityGroups {
 		rule := map[string]interface{}{
 			"security_group_name":     *g.EC2SecurityGroupName,
@@ -256,8 +255,8 @@ func resourceAwsDbSecurityGroupRead(d *schema.ResourceData, meta interface{}) er
 		rules.Add(rule)
 	}
 
-	log.Printf("%+v", rules);
-	log.Printf("****************************************** DONE READ");
+	log.Printf("%+v", rules)
+	log.Printf("****************************************** DONE READ")
 	d.Set("ingress", rules)
 
 	return nil
@@ -345,7 +344,7 @@ func resourceAwsDbSecurityGroupAuthorizeRule(ingress interface{}, dbSecurityGrou
 func resourceAwsDbSecurityGroupRevokeRule(ingress interface{}, dbSecurityGroupName string, conn *rds.RDS) error {
 	ing := ingress.(map[string]interface{})
 
-	log.Printf("Revoking: %+v", ing);
+	log.Printf("Revoking: %+v", ing)
 
 	opts := rds.RevokeDBSecurityGroupIngressInput{
 		DBSecurityGroupName: aws.String(dbSecurityGroupName),
@@ -398,7 +397,7 @@ func resourceAwsDbSecurityGroupIngressHash(v interface{}) int {
 		buf.WriteString(fmt.Sprintf("%s-", v.(string)))
 	}
 
-	log.Printf("Hash: %s \n Buf: %s \n", hashcode.String(buf.String()),buf.String())
+	log.Printf("Hash: %s \n Buf: %s \n", hashcode.String(buf.String()), buf.String())
 
 	return hashcode.String(buf.String())
 }
@@ -413,7 +412,7 @@ func resourceAwsDbSecurityGroupStateRefreshFunc(
 			return nil, "", err
 		}
 
-		log.Printf("***********************************");
+		log.Printf("***********************************")
 
 		statuses := make([]string, 0, len(v.EC2SecurityGroups)+len(v.IPRanges))
 		for _, ec2g := range v.EC2SecurityGroups {
