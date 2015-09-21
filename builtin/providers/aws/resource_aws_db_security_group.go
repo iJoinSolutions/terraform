@@ -122,7 +122,8 @@ func resourceAwsDbSecurityGroupUpdate(d *schema.ResourceData, meta interface{}) 
 	ingresses := d.Get("ingress").(*schema.Set)
 	for _, ing := range ingresses.List() {
 		err := resourceAwsDbSecurityGroupAuthorizeRule(ing, *sg.DBSecurityGroupName, conn)
-		if err != nil {
+		if err != nil && err.(awserr.Error).Code() != "AuthorizationAlreadyExists"{
+			log.Printf("%+v", err.(awserr.Error).Code())
 			errs = append(errs, err)
 		}
 	}
