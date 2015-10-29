@@ -147,6 +147,11 @@ func resourceAwsInstance() *schema.Resource {
 				Optional: true,
 			},
 
+			"instance_initiated_shutdown_behavior": &schema.Schema{
+				Type:     schema.TypeString,
+				Optional: true,
+			},
+
 			"monitoring": &schema.Schema{
 				Type:     schema.TypeBool,
 				Optional: true,
@@ -331,17 +336,18 @@ func resourceAwsInstanceCreate(d *schema.ResourceData, meta interface{}) error {
 		Monitoring:            instanceOpts.Monitoring,
 		IamInstanceProfile:    instanceOpts.IAMInstanceProfile,
 		ImageId:               instanceOpts.ImageID,
-		InstanceType:          instanceOpts.InstanceType,
-		KeyName:               instanceOpts.KeyName,
-		MaxCount:              aws.Int64(int64(1)),
-		MinCount:              aws.Int64(int64(1)),
-		NetworkInterfaces:     instanceOpts.NetworkInterfaces,
-		Placement:             instanceOpts.Placement,
-		PrivateIpAddress:      instanceOpts.PrivateIPAddress,
-		SecurityGroupIds:      instanceOpts.SecurityGroupIDs,
-		SecurityGroups:        instanceOpts.SecurityGroups,
-		SubnetId:              instanceOpts.SubnetID,
-		UserData:              instanceOpts.UserData64,
+		InstanceInitiatedShutdownBehavior: instanceOpts.InstanceInitiatedShutdownBehavior,
+		InstanceType:                      instanceOpts.InstanceType,
+		KeyName:                           instanceOpts.KeyName,
+		MaxCount:                          aws.Int64(int64(1)),
+		MinCount:                          aws.Int64(int64(1)),
+		NetworkInterfaces:                 instanceOpts.NetworkInterfaces,
+		Placement:                         instanceOpts.Placement,
+		PrivateIpAddress:                  instanceOpts.PrivateIPAddress,
+		SecurityGroupIds:                  instanceOpts.SecurityGroupIDs,
+		SecurityGroups:                    instanceOpts.SecurityGroups,
+		SubnetId:                          instanceOpts.SubnetID,
+		UserData:                          instanceOpts.UserData64,
 	}
 
 	// Create the instance
@@ -408,11 +414,6 @@ func resourceAwsInstanceCreate(d *schema.ResourceData, meta interface{}) error {
 		})
 	}
 
-	// Set our attributes
-	if err := resourceAwsInstanceRead(d, meta); err != nil {
-		return err
-	}
-
 	// Update if we need to
 	return resourceAwsInstanceUpdate(d, meta)
 }
@@ -463,12 +464,17 @@ func resourceAwsInstanceRead(d *schema.ResourceData, meta interface{}) error {
 	d.Set("public_ip", instance.PublicIpAddress)
 	d.Set("private_dns", instance.PrivateDnsName)
 	d.Set("private_ip", instance.PrivateIpAddress)
+	d.Set("iam_instance_profile", iamInstanceProfileArnToName(instance.IamInstanceProfile))
+
 	if len(instance.NetworkInterfaces) > 0 {
 		d.Set("subnet_id", instance.NetworkInterfaces[0].SubnetId)
 	} else {
 		d.Set("subnet_id", instance.SubnetId)
 	}
 	d.Set("ebs_optimized", instance.EbsOptimized)
+	if instance.SubnetId != nil && *instance.SubnetId != "" {
+		d.Set("source_dest_check", instance.SourceDestCheck)
+	}
 
 	if instance.Monitoring != nil && instance.Monitoring.State != nil {
 		monitoringState := *instance.Monitoring.State
@@ -537,16 +543,23 @@ func resourceAwsInstanceUpdate(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	// SourceDestCheck can only be set on VPC instances
-	if d.Get("subnet_id").(string) != "" {
-		log.Printf("[INFO] Modifying instance %s", d.Id())
-		_, err := conn.ModifyInstanceAttribute(&ec2.ModifyInstanceAttributeInput{
-			InstanceId: aws.String(d.Id()),
-			SourceDestCheck: &ec2.AttributeBooleanValue{
-				Value: aws.Bool(d.Get("source_dest_check").(bool)),
-			},
-		})
-		if err != nil {
-			return err
+	// AWS will return an error of InvalidParameterCombination if we attempt
+	// to modify the source_dest_check of an instance in EC2 Classic
+	log.Printf("[INFO] Modifying instance %s", d.Id())
+	_, err := conn.ModifyInstanceAttribute(&ec2.ModifyInstanceAttributeInput{
+		InstanceId: aws.String(d.Id()),
+		SourceDestCheck: &ec2.AttributeBooleanValue{
+			Value: aws.Bool(d.Get("source_dest_check").(bool)),
+		},
+	})
+	if err != nil {
+		if ec2err, ok := err.(awserr.Error); ok {
+			// Toloerate InvalidParameterCombination error in Classic, otherwise
+			// return the error
+			if "InvalidParameterCombination" != ec2err.Code() {
+				return err
+			}
+			log.Printf("[WARN] Attempted to modify SourceDestCheck on non VPC instance: %s", ec2err.Message())
 		}
 	}
 
@@ -571,6 +584,19 @@ func resourceAwsInstanceUpdate(d *schema.ResourceData, meta interface{}) error {
 			InstanceId: aws.String(d.Id()),
 			DisableApiTermination: &ec2.AttributeBooleanValue{
 				Value: aws.Bool(d.Get("disable_api_termination").(bool)),
+			},
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	if d.HasChange("instance_initiated_shutdown_behavior") {
+		log.Printf("[INFO] Modifying instance %s", d.Id())
+		_, err := conn.ModifyInstanceAttribute(&ec2.ModifyInstanceAttributeInput{
+			InstanceId: aws.String(d.Id()),
+			InstanceInitiatedShutdownBehavior: &ec2.AttributeValue{
+				Value: aws.String(d.Get("instance_initiated_shutdown_behavior").(string)),
 			},
 		})
 		if err != nil {
@@ -669,7 +695,7 @@ func readBlockDevicesFromInstance(instance *ec2.Instance, conn *ec2.EC2) (map[st
 	instanceBlockDevices := make(map[string]*ec2.InstanceBlockDeviceMapping)
 	for _, bd := range instance.BlockDeviceMappings {
 		if bd.Ebs != nil {
-			instanceBlockDevices[*(bd.Ebs.VolumeId)] = bd
+			instanceBlockDevices[*bd.Ebs.VolumeId] = bd
 		}
 	}
 
@@ -729,9 +755,9 @@ func readBlockDevicesFromInstance(instance *ec2.Instance, conn *ec2.EC2) (map[st
 }
 
 func blockDeviceIsRoot(bd *ec2.InstanceBlockDeviceMapping, instance *ec2.Instance) bool {
-	return (bd.DeviceName != nil &&
+	return bd.DeviceName != nil &&
 		instance.RootDeviceName != nil &&
-		*bd.DeviceName == *instance.RootDeviceName)
+		*bd.DeviceName == *instance.RootDeviceName
 }
 
 func fetchRootDeviceName(ami string, conn *ec2.EC2) (*string, error) {
@@ -878,22 +904,23 @@ func readBlockDeviceMappingsFromConfig(
 }
 
 type awsInstanceOpts struct {
-	BlockDeviceMappings   []*ec2.BlockDeviceMapping
-	DisableAPITermination *bool
-	EBSOptimized          *bool
-	Monitoring            *ec2.RunInstancesMonitoringEnabled
-	IAMInstanceProfile    *ec2.IamInstanceProfileSpecification
-	ImageID               *string
-	InstanceType          *string
-	KeyName               *string
-	NetworkInterfaces     []*ec2.InstanceNetworkInterfaceSpecification
-	Placement             *ec2.Placement
-	PrivateIPAddress      *string
-	SecurityGroupIDs      []*string
-	SecurityGroups        []*string
-	SpotPlacement         *ec2.SpotPlacement
-	SubnetID              *string
-	UserData64            *string
+	BlockDeviceMappings               []*ec2.BlockDeviceMapping
+	DisableAPITermination             *bool
+	EBSOptimized                      *bool
+	Monitoring                        *ec2.RunInstancesMonitoringEnabled
+	IAMInstanceProfile                *ec2.IamInstanceProfileSpecification
+	ImageID                           *string
+	InstanceInitiatedShutdownBehavior *string
+	InstanceType                      *string
+	KeyName                           *string
+	NetworkInterfaces                 []*ec2.InstanceNetworkInterfaceSpecification
+	Placement                         *ec2.Placement
+	PrivateIPAddress                  *string
+	SecurityGroupIDs                  []*string
+	SecurityGroups                    []*string
+	SpotPlacement                     *ec2.SpotPlacement
+	SubnetID                          *string
+	UserData64                        *string
 }
 
 func buildAwsInstanceOpts(
@@ -905,6 +932,10 @@ func buildAwsInstanceOpts(
 		EBSOptimized:          aws.Bool(d.Get("ebs_optimized").(bool)),
 		ImageID:               aws.String(d.Get("ami").(string)),
 		InstanceType:          aws.String(d.Get("instance_type").(string)),
+	}
+
+	if v := d.Get("instance_initiated_shutdown_behavior").(string); v != "" {
+		opts.InstanceInitiatedShutdownBehavior = aws.String(v)
 	}
 
 	opts.Monitoring = &ec2.RunInstancesMonitoringEnabled{
@@ -1045,4 +1076,11 @@ func awsTerminateInstance(conn *ec2.EC2, id string) error {
 	}
 
 	return nil
+}
+
+func iamInstanceProfileArnToName(ip *ec2.IamInstanceProfile) string {
+	if ip == nil || ip.Arn == nil {
+		return ""
+	}
+	return strings.Split(*ip.Arn, "/")[1]
 }

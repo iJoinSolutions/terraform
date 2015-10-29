@@ -132,11 +132,11 @@ func testAccCheckComputeInstanceTemplateMetadata(
 				continue
 			}
 
-			if v == item.Value {
+			if item.Value != nil && v == *item.Value {
 				return nil
 			}
 
-			return fmt.Errorf("bad value for %s: %s", k, item.Value)
+			return fmt.Errorf("bad value for %s: %s", k, *item.Value)
 		}
 
 		return fmt.Errorf("metadata not found: %s", k)
@@ -269,6 +269,7 @@ resource "google_compute_instance_template" "foobar" {
 	disk {
 		source_image = "debian-7-wheezy-v20140814"
 		auto_delete = true
+		disk_size_gb = 100
 		boot = true
 	}
 

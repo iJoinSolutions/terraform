@@ -3,10 +3,9 @@ package google
 import (
 	"fmt"
 	"log"
-	"time"
 
-	"google.golang.org/api/googleapi"
 	"google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 
 	"github.com/hashicorp/terraform/helper/hashcode"
 	"github.com/hashicorp/terraform/helper/schema"
@@ -82,26 +81,6 @@ func resourceComputeInstanceGroupManager() *schema.Resource {
 	}
 }
 
-func waitOpZone(config *Config, op *compute.Operation, zone string,
-	resource string, action string) (*compute.Operation, error) {
-
-	w := &OperationWaiter{
-		Service: config.clientCompute,
-		Op:      op,
-		Project: config.Project,
-		Zone:    zone,
-		Type:    OperationWaitZone,
-	}
-	state := w.Conf()
-	state.Timeout = 8 * time.Minute
-	state.MinTimeout = 1 * time.Second
-	opRaw, err := state.WaitForState()
-	if err != nil {
-		return nil, fmt.Errorf("Error waiting for %s to %s: %s", resource, action, err)
-	}
-	return opRaw.(*compute.Operation), nil
-}
-
 func resourceComputeInstanceGroupManagerCreate(d *schema.ResourceData, meta interface{}) error {
 	config := meta.(*Config)
 
@@ -116,7 +95,7 @@ func resourceComputeInstanceGroupManagerCreate(d *schema.ResourceData, meta inte
 		Name:             d.Get("name").(string),
 		BaseInstanceName: d.Get("base_instance_name").(string),
 		InstanceTemplate: d.Get("instance_template").(string),
-		TargetSize: target_size,
+		TargetSize:       target_size,
 	}
 
 	// Set optional fields
@@ -143,15 +122,9 @@ func resourceComputeInstanceGroupManagerCreate(d *schema.ResourceData, meta inte
 	d.SetId(manager.Name)
 
 	// Wait for the operation to complete
-	op, err = waitOpZone(config, op, d.Get("zone").(string), "InstanceGroupManager", "create")
+	err = computeOperationWaitZone(config, op, d.Get("zone").(string), "Creating InstanceGroupManager")
 	if err != nil {
 		return err
-	}
-	if op.Error != nil {
-		// The resource didn't actually create
-		d.SetId("")
-		// Return the error
-		return OperationError(*op.Error)
 	}
 
 	return resourceComputeInstanceGroupManagerRead(d, meta)
@@ -208,12 +181,9 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 		}
 
 		// Wait for the operation to complete
-		op, err = waitOpZone(config, op, d.Get("zone").(string), "InstanceGroupManager", "update TargetPools")
+		err = computeOperationWaitZone(config, op, d.Get("zone").(string), "Updating InstanceGroupManager")
 		if err != nil {
 			return err
-		}
-		if op.Error != nil {
-			return OperationError(*op.Error)
 		}
 
 		d.SetPartial("target_pools")
@@ -233,12 +203,9 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 		}
 
 		// Wait for the operation to complete
-		op, err = waitOpZone(config, op, d.Get("zone").(string), "InstanceGroupManager", "update instance template")
+		err = computeOperationWaitZone(config, op, d.Get("zone").(string), "Updating InstanceGroupManager")
 		if err != nil {
 			return err
-		}
-		if op.Error != nil {
-			return OperationError(*op.Error)
 		}
 
 		d.SetPartial("instance_template")
@@ -257,12 +224,9 @@ func resourceComputeInstanceGroupManagerUpdate(d *schema.ResourceData, meta inte
 			}
 
 			// Wait for the operation to complete
-			op, err = waitOpZone(config, op, d.Get("zone").(string), "InstanceGroupManager", "update target_size")
+			err = computeOperationWaitZone(config, op, d.Get("zone").(string), "Updating InstanceGroupManager")
 			if err != nil {
 				return err
-			}
-			if op.Error != nil {
-				return OperationError(*op.Error)
 			}
 		}
 
@@ -284,16 +248,9 @@ func resourceComputeInstanceGroupManagerDelete(d *schema.ResourceData, meta inte
 	}
 
 	// Wait for the operation to complete
-	op, err = waitOpZone(config, op, d.Get("zone").(string), "InstanceGroupManager", "delete")
+	err = computeOperationWaitZone(config, op, d.Get("zone").(string), "Deleting InstanceGroupManager")
 	if err != nil {
 		return err
-	}
-	if op.Error != nil {
-		// The resource didn't actually create
-		d.SetId("")
-
-		// Return the error
-		return OperationError(*op.Error)
 	}
 
 	d.SetId("")

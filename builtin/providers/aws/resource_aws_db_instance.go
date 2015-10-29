@@ -75,29 +75,10 @@ func resourceAwsDbInstance() *schema.Resource {
 			},
 
 			"identifier": &schema.Schema{
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-				ValidateFunc: func(v interface{}, k string) (ws []string, errors []error) {
-					value := v.(string)
-					if !regexp.MustCompile(`^[0-9a-z-]+$`).MatchString(value) {
-						errors = append(errors, fmt.Errorf(
-							"only lowercase alphanumeric characters and hyphens allowed in %q", k))
-					}
-					if !regexp.MustCompile(`^[a-z]`).MatchString(value) {
-						errors = append(errors, fmt.Errorf(
-							"first character of %q must be a letter", k))
-					}
-					if regexp.MustCompile(`--`).MatchString(value) {
-						errors = append(errors, fmt.Errorf(
-							"%q cannot contain two consecutive hyphens", k))
-					}
-					if regexp.MustCompile(`-$`).MatchString(value) {
-						errors = append(errors, fmt.Errorf(
-							"%q cannot end with a hyphen", k))
-					}
-					return
-				},
+				Type:         schema.TypeString,
+				Required:     true,
+				ForceNew:     true,
+				ValidateFunc: validateRdsId,
 			},
 
 			"instance_class": &schema.Schema{
@@ -139,6 +120,13 @@ func resourceAwsDbInstance() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
+				StateFunc: func(v interface{}) string {
+					if v != nil {
+						value := v.(string)
+						return strings.ToLower(value)
+					}
+					return ""
+				},
 			},
 
 			"multi_az": &schema.Schema{
@@ -250,6 +238,12 @@ func resourceAwsDbInstance() *schema.Resource {
 			},
 
 			"auto_minor_version_upgrade": &schema.Schema{
+				Type:     schema.TypeBool,
+				Computed: false,
+				Optional: true,
+			},
+
+			"allow_major_version_upgrade": &schema.Schema{
 				Type:     schema.TypeBool,
 				Computed: false,
 				Optional: true,
@@ -544,7 +538,6 @@ func resourceAwsDbInstanceRead(d *schema.ResourceData, meta interface{}) error {
 		if v.DBName != nil && *v.DBName != "" {
 			name = *v.DBName
 		}
-
 		log.Printf("[DEBUG] Error building ARN for DB Instance, not setting Tags for DB %s", name)
 	} else {
 		resp, err := conn.ListTagsForResource(&rds.ListTagsForResourceInput{
@@ -552,7 +545,7 @@ func resourceAwsDbInstanceRead(d *schema.ResourceData, meta interface{}) error {
 		})
 
 		if err != nil {
-			log.Printf("[DEBUG] Error retreiving tags for ARN: %s", arn)
+			log.Printf("[DEBUG] Error retrieving tags for ARN: %s", arn)
 		}
 
 		var dt []*rds.Tag
@@ -649,6 +642,11 @@ func resourceAwsDbInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 		req.AllocatedStorage = aws.Int64(int64(d.Get("allocated_storage").(int)))
 		requestUpdate = true
 	}
+	if d.HasChange("allow_major_version_upgrade") {
+		d.SetPartial("allow_major_version_upgrade")
+		req.AllowMajorVersionUpgrade = aws.Bool(d.Get("allow_major_version_upgrade").(bool))
+		requestUpdate = true
+	}
 	if d.HasChange("backup_retention_period") {
 		d.SetPartial("backup_retention_period")
 		req.BackupRetentionPeriod = aws.Int64(int64(d.Get("backup_retention_period").(int)))
@@ -731,7 +729,7 @@ func resourceAwsDbInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 		}
 	}
 
-	// seperate request to promote a database
+	// separate request to promote a database
 	if d.HasChange("replicate_source_db") {
 		if d.Get("replicate_source_db").(string) == "" {
 			// promote
@@ -761,6 +759,7 @@ func resourceAwsDbInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 		}
 	}
 	d.Partial(false)
+
 	return resourceAwsDbInstanceRead(d, meta)
 }
 
@@ -775,7 +774,6 @@ func resourceAwsDbInstanceRetrieve(
 	log.Printf("[DEBUG] DB Instance describe configuration: %#v", opts)
 
 	resp, err := conn.DescribeDBInstances(&opts)
-
 	if err != nil {
 		dbinstanceerr, ok := err.(awserr.Error)
 		if ok && dbinstanceerr.Code() == "DBInstanceNotFound" {
